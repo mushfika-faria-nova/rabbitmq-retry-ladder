@@ -10,7 +10,7 @@ Last updated: 2026-11-10 · Size: Small · Current phase: 2 of 5, project skelet
 | Phase | What it delivers | Status |
 |---|---|---|
 | 1 | Design doc and decisions | ✅ approved 2026-11-10 |
-| 2 | Project skeleton: Gradle build, Spring Boot auto-configuration, CI, a smoke test against real RabbitMQ | ⬜ not started |
+| 2 | Project skeleton: Gradle build, Spring Boot auto-configuration, CI, a smoke test against real RabbitMQ | 🔄 in review (PR for #1) |
 | 3 | The ladder and the stop rule, as plain logic with unit tests | ⬜ not started |
 | 4 | Queues, the retry flow and metrics, tested against real RabbitMQ | ⬜ not started |
 | 5 | Demo app, README and diagram | ⬜ not started |
@@ -41,16 +41,15 @@ flowchart LR
 
 ## What works today
 
-Nothing runs yet. The design is approved; there is no Java code.
+Settings are checked at startup and each queue's retry plan is logged. A broker test proves the return path works on RabbitMQ 4.1. No retries yet.
 
 ## In progress
 
-Nothing yet. The approved design: the [requirements](01-requirements.md), the [design](02-design.md) and the [decisions](03-decisions.md).
+Phase 2 pull request.
 
 ## Next
 
-1. Open one GitHub issue for each of Phases 2 to 5.
-2. Build the project skeleton (Phase 2).
+1. Phase 3: the ladder and the stop rule (#2).
 
 ## Open decisions
 
@@ -73,18 +72,18 @@ Each phase is one pull request. Tick a box when it's done.
 - [x] Check the design against Spring Boot 4 and Spring AMQP 4
 - [x] Final read and approval
 - [x] Mark all decisions Accepted, mark Phase 1 done
-- [ ] Commit and push
-- [ ] Open one GitHub issue for each of Phases 2 to 5
+- [x] Commit and push
+- [x] Open one GitHub issue for each of Phases 2 to 5
 
 ### Phase 2: Project skeleton
-- [ ] Gradle build (Kotlin DSL, Gradle 9.1+, Java 25) with two modules: `retry-ladder-spring-boot-starter` and `demo`
-- [ ] Pin the Spring Boot 4.x version and the RabbitMQ test image
-- [ ] Spring Boot auto-configuration with `@ConfigurationProperties`
-- [ ] Bad settings stop startup (R-8)
-- [ ] Print the retry plan for each queue at startup (R-8)
-- [ ] `compose.yaml` with RabbitMQ and its management UI
-- [ ] Smoke test against real RabbitMQ: declare the queues, check our headers survive the move back (decision 1)
-- [ ] CI on GitHub Actions: build and run all tests on every pull request
+- [x] Gradle build (Kotlin DSL, Gradle 9.1+, Java 25) with two modules: `retry-ladder-spring-boot-starter` and `demo`
+- [x] Pin the Spring Boot 4.x version and the RabbitMQ test image
+- [x] Spring Boot auto-configuration with `@ConfigurationProperties`
+- [x] Bad settings stop startup (R-8)
+- [x] Print the retry plan for each queue at startup (R-8)
+- [x] `compose.yaml` with RabbitMQ and its management UI
+- [x] Smoke test against real RabbitMQ: declare the queues, check our headers survive the move back (decision 1)
+- [x] CI on GitHub Actions: build and run all tests on every pull request
 
 ### Phase 3: Ladder and stop rule (plain logic, unit tests)
 - [ ] Waits grow, then level off; a fixed wait uses one queue; settings that need too many queues stop startup (R-1)

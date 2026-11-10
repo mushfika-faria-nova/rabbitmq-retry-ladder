@@ -7,7 +7,7 @@ Spring Boot starter for loss-free RabbitMQ consumer retries with exponential bac
 If you use Kafka, Spring already has `@RetryableTopic`. If you use RabbitMQ, there is no equivalent.
 This library fills that gap, and adds a time budget and an audit trail.
 
-> Status: design approved, no code yet. Where it stands: [docs/00-status.md](docs/00-status.md). Design: [docs/02-design.md](docs/02-design.md).
+> Status: Phase 2. Settings are checked and the retry plan is logged at startup; no retries yet. Where it stands: [docs/00-status.md](docs/00-status.md). Design: [docs/02-design.md](docs/02-design.md).
 
 ## What it does
 
@@ -20,10 +20,16 @@ retry-ladder:
   multiplier: 2          # each wait × 2 (use 1 for a fixed delay)
   max-delay: 8m          # the plateau
   window: 30m            # stop 30 minutes after the first failure
-  max-attempts: 20       # backstop
+  max-attempts: 100      # safety limit
   non-retryable: [com.example.InvalidPayloadException]   # park at once, don't retry
-  queues: [notifications.delivery-status]
+  queues:
+    orders: {}           # uses the defaults above
+    payments:
+      window: 2h         # only this one changes
 ```
+
+These values are also the defaults, so you only set what you want to change.
+A queue name with dots goes in brackets: `"[notifications.delivery-status]": {}`.
 
 This gives waits of 1m, 2m, 4m, 8m, then 8m repeating, until 30 minutes have passed.
 The library logs this ladder at startup, so you can check your settings at a glance.
@@ -58,9 +64,12 @@ Why the broker holds retries at all (and not Resilience4j, Kafka or Redis): [dec
 | `docs/03-decisions.md` | all design decisions in one table |
 | `LICENSE` | Apache-2.0 |
 | `.gitignore` | files git ignores |
-
-Added in later phases: `retry-ladder-spring-boot-starter/` (the library), `demo/` (an example app),
-`compose.yaml` (local RabbitMQ) and `.github/workflows/` (CI).
+| `build.gradle.kts`, `settings.gradle.kts` | the Gradle build |
+| `gradlew`, `gradlew.bat`, `gradle/` | the Gradle wrapper and the pinned versions |
+| `retry-ladder-spring-boot-starter/` | the library |
+| `demo/` | an example app |
+| `compose.yaml` | RabbitMQ for local runs |
+| `.github/workflows/` | CI: build and all tests on every pull request |
 
 ## Guarantees
 

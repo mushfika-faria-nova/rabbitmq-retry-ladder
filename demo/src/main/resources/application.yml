@@ -1,0 +1,13 @@
+spring:
+  main:
+    banner-mode: off
+
+retry-ladder:
+  initial-delay: 1m      # first wait
+  multiplier: 2          # each wait x 2 (use 1 for a fixed wait)
+  max-delay: 8m          # the waits stop growing here
+  window: 30m            # stop 30 minutes after the first failure
+  queues:
+    orders: {}           # uses the defaults above
+    payments:
+      window: 2h         # only this one changes

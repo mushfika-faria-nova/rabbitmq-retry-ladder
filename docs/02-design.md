@@ -88,8 +88,9 @@ flowchart LR
 - `<p>.delay.<ms>`: one quorum queue per wait, for example `retry-ladder.delay.60000` for 1 minute.
   When the time is up, RabbitMQ moves the message to `<p>.return` (decision 2).
 - `<p>.return` (durable headers exchange): sends the message back to the queue named in `x-original-queue`.
-  Each app queue is bound with `x-match=all-with-x`. Plain `all` skips headers that start with `x-`, so it
-  would never match (decision 1). The Phase 2 test checks this.
+  Each app queue is bound with `x-match=all-with-x`. Plain `all` skips headers that start with `x-`.
+  The binding would then have nothing to check and would take every message, so each retry would land in
+  every app queue (decision 1). The Phase 2 broker test proves both.
 - `<p>.dlx` (durable direct exchange) and `<queue>.dlq` (quorum queue): one parking queue per app queue (decision 8).
 - The library creates the app's queues too, so it can set where rejected messages go
   (`x-dead-letter-exchange=<p>.dlx`, `x-dead-letter-routing-key=<queue>.dlq`). If a queue already exists
