@@ -1,4 +1,4 @@
-iipackage io.github.mushfikafarianova.retryladder.demo;
+package io.github.mushfikafarianova.retryladder.demo;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
