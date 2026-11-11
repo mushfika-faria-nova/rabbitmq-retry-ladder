@@ -3,15 +3,15 @@
 **Who this is for:** anyone who wants to know where this project stands, without reading the code.
 **After reading:** you know what works today, what's being built, what's next, and what is still undecided.
 
-Last updated: 2026-11-10 · Size: Small · Current phase: 2 of 5, project skeleton
+Last updated: 2026-11-11 · Size: Small · Current phase: 3 of 5, ladder and stop rule
 
 ## Where it stands
 
 | Phase | What it delivers | Status |
 |---|---|---|
 | 1 | Design doc and decisions | ✅ approved 2026-11-10 |
-| 2 | Project skeleton: Gradle build, Spring Boot auto-configuration, CI, a smoke test against real RabbitMQ | 🔄 in review (PR for #1) |
-| 3 | The ladder and the stop rule, as plain logic with unit tests | ⬜ not started |
+| 2 | Project skeleton: Gradle build, Spring Boot auto-configuration, CI, a smoke test against real RabbitMQ | ✅ merged 2026-11-10 |
+| 3 | The ladder and the stop rule, as plain logic with unit tests | 🔄 in review (PR for #2) |
 | 4 | Queues, the retry flow and metrics, tested against real RabbitMQ | ⬜ not started |
 | 5 | Demo app, README and diagram | ⬜ not started |
 
@@ -41,15 +41,16 @@ flowchart LR
 
 ## What works today
 
-Settings are checked at startup and each queue's retry plan is logged. A broker test proves the return path works on RabbitMQ 4.1. No retries yet.
+Settings are checked at startup and each queue's retry plan is logged. A broker test proves the return path works on RabbitMQ 4.1.
+The wait for each retry and the stop rule are worked out as plain logic, with unit tests (R-1, R-2, R-3, R-6). They are not connected to RabbitMQ yet.
 
 ## In progress
 
-Phase 2 pull request.
+Phase 3 pull request.
 
 ## Next
 
-1. Phase 3: the ladder and the stop rule (#2).
+1. Phase 4: queues, retry flow and metrics (#3).
 
 ## Open decisions
 
@@ -86,11 +87,11 @@ Each phase is one pull request. Tick a box when it's done.
 - [x] CI on GitHub Actions: build and run all tests on every pull request
 
 ### Phase 3: Ladder and stop rule (plain logic, unit tests)
-- [ ] Waits grow, then level off; a fixed wait uses one queue; settings that need too many queues stop startup (R-1)
-- [ ] Time limit: a retry landing exactly on the limit is allowed, 1 ms over is not (R-2)
-- [ ] A message without its start time uses the try limit instead (R-2)
-- [ ] Errors that can never succeed, also when wrapped, are parked at once (R-3)
-- [ ] History headers on every retry copy and every parked message (R-6)
+- [x] Waits grow, then level off; a fixed wait uses one queue; settings that need too many queues stop startup (R-1)
+- [x] Time limit: a retry landing exactly on the limit is allowed, 1 ms over is not (R-2)
+- [x] A message without its start time uses the try limit instead (R-2)
+- [x] Errors that can never succeed, also when wrapped, are parked at once (R-3)
+- [x] History headers on every retry copy and every parked message (R-6)
 
 ### Phase 4: Queues, retry flow and metrics (tests against real RabbitMQ)
 - [ ] Declare the delay queues, the return exchange, the bindings and the parking queues (decisions 1, 2, 4, 8)

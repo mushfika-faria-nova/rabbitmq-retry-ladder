@@ -7,6 +7,14 @@ import java.util.stream.Collectors;
 /** The checked settings for one queue, and the waits they produce. */
 record QueuePlan(String queue, List<Duration> waits, Duration window, int maxAttempts) {
 
+    /**
+     * The wait before the next try, given how many retries already happened (R-1).
+     * After the last delay queue, every retry uses the longest wait.
+     */
+    Duration waitFor(int retriesSoFar) {
+        return waits.get(Math.min(Math.max(retriesSoFar, 0), waits.size() - 1));
+    }
+
     /** The line logged at startup, so a team can check its settings at a glance (R-8). */
     String describe() {
         String steps = waits.stream().map(QueuePlan::format).collect(Collectors.joining(", "));
