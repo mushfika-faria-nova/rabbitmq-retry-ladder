@@ -25,6 +25,7 @@ record QueuePlan(String queue, List<Duration> waits, Duration window, int maxAtt
 
     static String format(Duration d) {
         long ms = d.toMillis();
+        if (ms == 0) return "0ms";
         if (ms % 3_600_000 == 0) return ms / 3_600_000 + "h";
         if (ms % 60_000 == 0) return ms / 60_000 + "m";
         if (ms % 1_000 == 0) return ms / 1_000 + "s";

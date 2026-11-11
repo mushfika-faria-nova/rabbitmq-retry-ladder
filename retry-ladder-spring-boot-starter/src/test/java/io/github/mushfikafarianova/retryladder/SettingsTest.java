@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.boot.amqp.autoconfigure.RabbitAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.system.CapturedOutput;
@@ -26,7 +27,7 @@ class SettingsTest {
     };
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
-            .withConfiguration(AutoConfigurations.of(RetryLadderAutoConfiguration.class))
+            .withConfiguration(AutoConfigurations.of(RabbitAutoConfiguration.class, RetryLadderAutoConfiguration.class))
             .withPropertyValues(GOOD);
 
     @Test
@@ -77,7 +78,7 @@ class SettingsTest {
     @Test
     void leftOutSettingsUseTheDefaults(CapturedOutput output) {
         new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(RetryLadderAutoConfiguration.class))
+                .withConfiguration(AutoConfigurations.of(RabbitAutoConfiguration.class, RetryLadderAutoConfiguration.class))
                 .withPropertyValues("retry-ladder.queues.orders.max-attempts=100")
                 .run(context -> {
                     assertThat(context).hasNotFailed();

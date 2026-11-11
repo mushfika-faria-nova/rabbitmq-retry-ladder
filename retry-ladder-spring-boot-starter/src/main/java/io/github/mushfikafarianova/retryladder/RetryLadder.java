@@ -1,0 +1,153 @@
+package io.github.mushfikafarianova.retryladder;
+
+import java.io.IOException;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.springframework.amqp.AmqpException;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.core.MessageBuilder;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+
+import com.rabbitmq.client.Channel;
+
+import io.github.mushfikafarianova.retryladder.Decision.Park;
+import io.github.mushfikafarianova.retryladder.Decision.Retry;
+import io.micrometer.core.instrument.MeterRegistry;
+
+/**
+ * The one bean apps use. Call {@link #handle} from a listener in manual ack mode (decision 3):
+ * it runs the work, then acks, retries or parks the message. The original is acked only after
+ * its retry copy or parked copy is confirmed by RabbitMQ (decision 6).
+ */
+public class RetryLadder {
+
+    private static final Log log = LogFactory.getLog(RetryLadder.class);
+
+    private final Map<String, StopRule> rules = new HashMap<>();
+    private final Map<String, QueuePlan> plans = new HashMap<>();
+    private final Topology topology;
+    private final RabbitTemplate template;
+    private final Duration confirmTimeout;
+    private final MeterRegistry meters;
+
+    RetryLadder(RetryPlans retryPlans, Topology topology, RabbitTemplate template, Duration confirmTimeout,
+            MeterRegistry meters, Clock clock) {
+        for (QueuePlan plan : retryPlans.plans()) {
+            plans.put(plan.queue(), plan);
+            rules.put(plan.queue(), new StopRule(plan, retryPlans.nonRetryable(), clock));
+        }
+        this.topology = topology;
+        this.template = template;
+        this.confirmTimeout = confirmTimeout;
+        this.meters = meters;
+    }
+
+    /**
+     * Runs the work for one message. On success the message is acked. On failure it is retried after a
+     * wait, or parked. Only throws if talking to RabbitMQ fails (the ack or the reject).
+     */
+    public void handle(Message message, Channel channel, MessageWork work) throws IOException {
+        long tag = message.getMessageProperties().getDeliveryTag();
+        try {
+            work.process(message);
+        } catch (Exception error) {
+            onFailure(message, channel, tag, error);
+            return;
+        }
+        channel.basicAck(tag, false);
+    }
+
+    private void onFailure(Message message, Channel channel, long tag, Exception error) throws IOException {
+        String queue = message.getMessageProperties().getConsumerQueue();
+        String messageId = message.getMessageProperties().getMessageId();
+        StopRule rule = queue == null ? null : rules.get(queue);
+        if (rule == null) {
+            log.error("Message " + messageId + " came from queue '" + queue + "', which retry-ladder doesn't manage; "
+                    + "rejecting it. Add the queue under retry-ladder.queues.");
+            channel.basicReject(tag, false);
+            return;
+        }
+        Decision decision = rule.decide(message.getMessageProperties().getHeaders(), error);
+        Message copy = MessageBuilder.fromClonedMessage(message).copyHeaders(decision.headers()).build();
+
+        String failure = switch (decision) {
+            case Retry r -> store(topology.retryExchange(), topology.delayRoutingKey(r.delay()), copy);
+            case Park p -> store(topology.parkingExchange(), Topology.parkingQueue(queue), copy);
+        };
+        if (failure != null) {
+            // Not proven stored: reject without requeue, so the queue's own dead-letter setting parks it.
+            meters.counter("retry.ladder.park.failed", "queue", queue, "cause", failure).increment();
+            log.error("Could not store message " + messageId + " from queue '" + queue + "' (" + failure
+                    + "); rejecting it so RabbitMQ parks it in " + Topology.parkingQueue(queue)
+                    + ". retryCount=" + decision.headers().get(Headers.RETRY_COUNT));
+            channel.basicReject(tag, false);
+            return;
+        }
+        switch (decision) {
+            case Retry r -> logRetry(queue, messageId, r);
+            case Park p -> {
+                meters.counter("retry.ladder.exhausted", "queue", queue, "reason", p.reason().value()).increment();
+                log.warn("Message " + messageId + " parked in " + Topology.parkingQueue(queue) + ": queue=" + queue
+                        + " retryCount=" + p.headers().get(Headers.RETRY_COUNT) + " reason=" + p.reason().value());
+            }
+        }
+        channel.basicAck(tag, false);
+    }
+
+    /** Publishes and waits for RabbitMQ's confirm. Returns null when stored, or the reason it isn't proven stored. */
+    private String store(String exchange, String routingKey, Message copy) {
+        CorrelationData correlation = new CorrelationData();
+        try {
+            template.send(exchange, routingKey, copy, correlation);
+            CorrelationData.Confirm confirm = correlation.getFuture()
+                    .get(confirmTimeout.toMillis(), TimeUnit.MILLISECONDS);
+            // Spring sets the returned message before it completes the confirm, so this check is safe.
+            if (correlation.getReturned() != null) {
+                return "returned";
+            }
+            return confirm.ack() ? null : "nacked";
+        } catch (TimeoutException ex) {
+            return "timeout";
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return "interrupted";
+        } catch (ExecutionException | AmqpException ex) {
+            return "error";
+        }
+    }
+
+    /** One line per retry with its whole timeline (R-7). Never the message body. */
+    private void logRetry(String queue, String messageId, Retry retry) {
+        meters.counter("retry.ladder.scheduled", "queue", queue, "tier", Long.toString(retry.delay().toMillis()))
+                .increment();
+        if (!log.isDebugEnabled()) {
+            return;
+        }
+        // The time the retry was planned, as written in the headers, so the log line matches them.
+        long now = (Long) retry.headers().get(Headers.LAST_RETRY_AT);
+        Object first = retry.headers().get(Headers.FIRST_FAILED_AT);
+        QueuePlan plan = plans.get(queue);
+        String elapsed = "unknown";
+        String timeLeft = "unknown";
+        if (first instanceof Long f) {
+            elapsed = QueuePlan.format(Duration.ofMillis(now - f));
+            timeLeft = QueuePlan.format(plan.window().minusMillis(now - f).minus(retry.delay()));
+        }
+        log.debug("Retry scheduled: messageId=" + messageId + " queue=" + queue
+                + " retry=" + retry.headers().get(Headers.RETRY_COUNT)
+                + " wait=" + QueuePlan.format(retry.delay())
+                + " elapsed=" + elapsed
+                + " nextTryAt=" + Instant.ofEpochMilli(now).plus(retry.delay())
+                + " timeLeft=" + timeLeft);
+    }
+}
