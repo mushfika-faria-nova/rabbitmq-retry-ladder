@@ -52,6 +52,9 @@ Checked on every failure, in this order:
 5. **Start time missing or broken** on a message that was already retried: the time can't be worked out.
    Log a warning and rely on rule 2 only. Don't write a new start time, or the clock would restart on every retry.
 
+A missing or broken `x-retry-count` counts as 0. The time limit still applies.
+A message parked on its first failure still gets `x-first-failed-at`, so its history is complete.
+
 `max-attempts` defaults to 100, so normally the time limit decides. It's only there in case a header is broken.
 
 The time limit is checked when a retry is planned, not when it runs. If the app is paused or busy, a retry

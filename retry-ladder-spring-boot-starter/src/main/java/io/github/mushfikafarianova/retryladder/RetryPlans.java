@@ -16,21 +16,28 @@ final class RetryPlans {
     static final int MAX_DELAY_QUEUES = 32;
 
     private final List<QueuePlan> plans;
+    private final List<Class<? extends Throwable>> nonRetryable;
 
-    private RetryPlans(List<QueuePlan> plans) {
+    private RetryPlans(List<QueuePlan> plans, List<Class<? extends Throwable>> nonRetryable) {
         this.plans = plans;
+        this.nonRetryable = nonRetryable;
     }
 
     List<QueuePlan> plans() {
         return plans;
     }
 
+    List<Class<? extends Throwable>> nonRetryable() {
+        return nonRetryable;
+    }
+
     static RetryPlans from(RetryLadderProperties props, ClassLoader classLoader) {
         require(props.getExchangePrefix() != null && !props.getExchangePrefix().isBlank(),
                 "retry-ladder.exchange-prefix must not be empty");
         requirePositive(props.getConfirmTimeout(), "retry-ladder.confirm-timeout");
+        List<Class<? extends Throwable>> nonRetryable = new ArrayList<>();
         for (String name : props.getNonRetryable()) {
-            checkThrowable(name, classLoader);
+            nonRetryable.add(throwable(name, classLoader));
         }
         WaitSettings defaults = new WaitSettings();
         defaults.setInitialDelay(props.getInitialDelay());
@@ -42,7 +49,7 @@ final class RetryPlans {
         for (Map.Entry<String, WaitSettings> e : props.getQueues().entrySet()) {
             plans.add(plan(e.getKey(), defaults, e.getValue()));
         }
-        return new RetryPlans(List.copyOf(plans));
+        return new RetryPlans(List.copyOf(plans), List.copyOf(nonRetryable));
     }
 
     private static QueuePlan plan(String queue, WaitSettings defaults, WaitSettings own) {
@@ -89,7 +96,7 @@ final class RetryPlans {
                 + " delay queues. Raise initial-delay or multiplier, or lower max-delay.");
     }
 
-    private static void checkThrowable(String name, ClassLoader classLoader) {
+    private static Class<? extends Throwable> throwable(String name, ClassLoader classLoader) {
         Class<?> type;
         try {
             type = ClassUtils.forName(name, classLoader);
@@ -99,6 +106,7 @@ final class RetryPlans {
         }
         require(Throwable.class.isAssignableFrom(type),
                 "retry-ladder.non-retryable: " + name + " is not an exception");
+        return type.asSubclass(Throwable.class);
     }
 
     private static <T> T pick(T own, T fallback, String name) {
