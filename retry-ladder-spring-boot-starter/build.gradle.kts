@@ -13,6 +13,7 @@ dependencies {
     annotationProcessor(platform(libs.spring.boot.bom))
 
     api("org.springframework.boot:spring-boot-starter-amqp")
+    implementation("io.micrometer:micrometer-core")
     annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
 
     testImplementation("org.springframework.boot:spring-boot-starter-amqp-test")

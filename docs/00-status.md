@@ -3,7 +3,7 @@
 **Who this is for:** anyone who wants to know where this project stands, without reading the code.
 **After reading:** you know what works today, what's being built, what's next, and what is still undecided.
 
-Last updated: 2026-11-11 · Size: Small · Current phase: 3 of 5, ladder and stop rule
+Last updated: 2026-11-11 · Size: Small · Current phase: 4 of 5, queues and retry flow
 
 ## Where it stands
 
@@ -11,8 +11,8 @@ Last updated: 2026-11-11 · Size: Small · Current phase: 3 of 5, ladder and sto
 |---|---|---|
 | 1 | Design doc and decisions | ✅ approved 2026-11-10 |
 | 2 | Project skeleton: Gradle build, Spring Boot auto-configuration, CI, a smoke test against real RabbitMQ | ✅ merged 2026-11-10 |
-| 3 | The ladder and the stop rule, as plain logic with unit tests | 🔄 in review (PR for #2) |
-| 4 | Queues, the retry flow and metrics, tested against real RabbitMQ | ⬜ not started |
+| 3 | The ladder and the stop rule, as plain logic with unit tests | ✅ merged 2026-11-11 |
+| 4 | Queues, the retry flow and metrics, tested against real RabbitMQ | 🔄 in review (PR for #3) |
 | 5 | Demo app, README and diagram | ⬜ not started |
 
 ### The road to done
@@ -41,16 +41,16 @@ flowchart LR
 
 ## What works today
 
-Settings are checked at startup and each queue's retry plan is logged. A broker test proves the return path works on RabbitMQ 4.1.
-The wait for each retry and the stop rule are worked out as plain logic, with unit tests (R-1, R-2, R-3, R-6). They are not connected to RabbitMQ yet.
+Messages are retried in RabbitMQ: the waits grow, then level off. A message is parked when its time runs out, when it never succeeds,
+or when its copy can't be stored. Tested against RabbitMQ 4.1 (R-1 to R-8). The demo doesn't send messages yet.
 
 ## In progress
 
-Phase 3 pull request.
+Phase 4 pull request.
 
 ## Next
 
-1. Phase 4: queues, retry flow and metrics (#3).
+1. Phase 5: demo and README (#4).
 
 ## Open decisions
 
@@ -94,17 +94,17 @@ Each phase is one pull request. Tick a box when it's done.
 - [x] History headers on every retry copy and every parked message (R-6)
 
 ### Phase 4: Queues, retry flow and metrics (tests against real RabbitMQ)
-- [ ] Declare the delay queues, the return exchange, the bindings and the parking queues (decisions 1, 2, 4, 8)
-- [ ] Retry flow: store the copy, wait for "stored", then ack (decision 6)
-- [ ] Arrival time of each retry matches the plan (R-1)
-- [ ] A message out of time is parked with reason `window` (R-2)
-- [ ] A retry that can't be stored is parked, not lost (R-4)
-- [ ] A crash before the ack loses nothing (R-4)
-- [ ] Retried and parked messages are unchanged: body, properties, app headers (R-4)
-- [ ] No thread sleeps during a wait (R-5)
-- [ ] A retry planned before a restart arrives after it (R-5)
-- [ ] Two queues with different time limits share delay queues without affecting each other (R-5)
-- [ ] Counters, and one log line per retry with no message body (R-7)
+- [x] Declare the delay queues, the return exchange, the bindings and the parking queues (decisions 1, 2, 4, 8)
+- [x] Retry flow: store the copy, wait for "stored", then ack (decision 6)
+- [x] Arrival time of each retry matches the plan (R-1)
+- [x] A message out of time is parked with reason `window` (R-2)
+- [x] A retry that can't be stored is parked, not lost (R-4)
+- [x] A crash before the ack loses nothing (R-4)
+- [x] Retried and parked messages are unchanged: body, properties, app headers (R-4)
+- [x] No thread sleeps during a wait (R-5)
+- [x] A retry planned before a restart arrives after it (R-5)
+- [x] Two queues with different time limits share delay queues without affecting each other (R-5)
+- [x] Counters, and one log line per retry with no message body (R-7)
 
 ### Phase 5: Demo and README
 - [ ] Demo app: a handler that fails for a while, then works; the logs show each retry

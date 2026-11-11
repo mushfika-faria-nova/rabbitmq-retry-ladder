@@ -21,6 +21,9 @@ public class RetryLadderProperties {
     /** How long to wait for RabbitMQ to confirm a retry copy or a parked message. */
     private Duration confirmTimeout = Duration.ofSeconds(5);
 
+    /** Queue type for the app's own queues. Delay and parking queues are always quorum queues. */
+    private QueueType queueType = QueueType.QUORUM;
+
     /** Exception classes that can never succeed. A message failing with one is parked at once. */
     private List<String> nonRetryable = new ArrayList<>();
 
@@ -50,6 +53,9 @@ public class RetryLadderProperties {
     public Duration getConfirmTimeout() { return confirmTimeout; }
     public void setConfirmTimeout(Duration confirmTimeout) { this.confirmTimeout = confirmTimeout; }
 
+    public QueueType getQueueType() { return queueType; }
+    public void setQueueType(QueueType queueType) { this.queueType = queueType; }
+
     public List<String> getNonRetryable() { return nonRetryable; }
     public void setNonRetryable(List<String> nonRetryable) { this.nonRetryable = nonRetryable; }
 
@@ -70,6 +76,9 @@ public class RetryLadderProperties {
 
     public Map<String, WaitSettings> getQueues() { return queues; }
     public void setQueues(Map<String, WaitSettings> queues) { this.queues = queues; }
+
+    /** RabbitMQ queue types the library can declare for the app's queues. */
+    public enum QueueType { QUORUM, CLASSIC }
 
     /** Wait settings for one queue. A value left empty uses the default. */
     public static class WaitSettings {

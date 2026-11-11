@@ -98,7 +98,7 @@ flowchart LR
 - The library creates the app's queues too, so it can set where rejected messages go
   (`x-dead-letter-exchange=<p>.dlx`, `x-dead-letter-routing-key=<queue>.dlq`). If a queue already exists
   with different settings, RabbitMQ refuses at startup (`PRECONDITION_FAILED`). That's on purpose: better
-  a loud failure than a silent one. The queue type is quorum by default and can be changed.
+  a loud failure than a silent one. The queue type is quorum by default; `retry-ladder.queue-type: CLASSIC` changes it.
 
 Everything the library creates is durable, so it survives a RabbitMQ restart. Quorum queues are always
 durable and save every message to disk, even one the sender marked as not persistent.
@@ -139,6 +139,9 @@ the app is moved to the parking queue by RabbitMQ.
 
 **The ack itself fails** (the connection closed): RabbitMQ delivers the message again. Same duplicate risk.
 
+**A queue the library doesn't manage.** A failed message from a queue that isn't under `retry-ladder.queues` is rejected
+and logged as an error. The library has no parking queue or return binding for it.
+
 ## 5. What it promises, and what it doesn't (R-4, R-5)
 
 It promises:
@@ -175,6 +178,9 @@ Counters:
 - `retry_ladder_scheduled_total{queue,tier}`: retries planned. `tier` is the wait in ms.
 - `retry_ladder_exhausted_total{queue,reason}`: messages parked.
 - `retry_ladder_park_failed_total{queue,cause}`: copies or parked messages RabbitMQ didn't confirm.
+
+In Micrometer they are named `retry.ladder.scheduled`, `retry.ladder.exhausted` and `retry.ladder.park.failed`.
+Prometheus shows them with the names above.
 
 Logs:
 

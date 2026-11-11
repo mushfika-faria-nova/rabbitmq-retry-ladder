@@ -7,7 +7,7 @@ Spring Boot starter for loss-free RabbitMQ consumer retries with exponential bac
 If you use Kafka, Spring already has `@RetryableTopic`. If you use RabbitMQ, there is no equivalent.
 This library fills that gap, and adds a time budget and an audit trail.
 
-> Status: Phase 3. The retry plan and the stop rule work as tested logic; they are not connected to RabbitMQ yet. Where it stands: [docs/00-status.md](docs/00-status.md). Design: [docs/02-design.md](docs/02-design.md).
+> Status: Phase 4. Retries work against a real RabbitMQ. The demo and a quick start come in Phase 5. Where it stands: [docs/00-status.md](docs/00-status.md). Design: [docs/02-design.md](docs/02-design.md).
 
 ## What it does
 
