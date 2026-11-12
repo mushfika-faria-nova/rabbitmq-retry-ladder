@@ -63,6 +63,8 @@ final class RetryPlans {
         require(initial.toMillis() >= 1, where + "initial-delay must be at least 1ms");
         require(multiplier >= 1, where + "multiplier must be 1 or more");
         require(max.compareTo(initial) >= 0, where + "max-delay must not be less than initial-delay");
+        // A delay queue's TTL is an int of milliseconds; a longer wait would overflow it.
+        require(max.compareTo(Duration.ofDays(24)) < 0, where + "max-delay must be under 24 days");
         requirePositive(window, where + "window");
         require(maxAttempts >= 1, where + "max-attempts must be 1 or more");
 
