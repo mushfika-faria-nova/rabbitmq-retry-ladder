@@ -160,7 +160,7 @@ If the time limit had run out, step 2 would send the message to `orders.dlq` ins
 | The app's code throws an `Error` | Rejects the original. `work_errors` goes up | `<queue>.dlq`, moved by RabbitMQ, no reason header |
 | The app crashes before the ack | Nothing | The app's queue again, same headers. A duplicate if the copy was stored |
 | The ack fails | Nothing | The app's queue again. Can be a duplicate |
-| A queue the library doesn't manage | Rejects, logs an error | Dropped, unless that queue has its own dead-letter setting |
+| A queue the library doesn't manage | Rejects, logs an error. The first message from it logs an error too, even if it works | Dropped, unless that queue has its own dead-letter setting |
 
 ### Details
 
@@ -207,6 +207,8 @@ the app is moved to the parking queue by RabbitMQ.
 
 **A queue the library doesn't manage.** A failed message from a queue that isn't under `retry-ladder.queues` is rejected
 and logged as an error. The library has no parking queue or return binding for it.
+So the first message from such a queue also logs an error, once, even if it works. A forgotten queue then
+shows up early, not when a failed message is lost.
 
 ## 5. What it promises, and what it doesn't (R-4, R-5)
 
@@ -258,5 +260,6 @@ Logs:
 | INFO | once at startup, for each queue | the plan: waits, longest wait, time limit, max tries |
 | WARN | a message is parked, or parking fails | `messageId`, queue, retry count, reason |
 | ERROR | parking fails and RabbitMQ's own safety net is all that's left | same |
+| ERROR | once, the first time a queue that isn't under `retry-ladder.queues` reaches `handle` | the queue name |
 
 The message body is never logged, and no headers beyond these.

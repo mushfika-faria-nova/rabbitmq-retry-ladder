@@ -6,6 +6,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -36,6 +38,7 @@ public class RetryLadder {
 
     private final Map<String, StopRule> rules = new HashMap<>();
     private final Map<String, QueuePlan> plans = new HashMap<>();
+    private final Set<String> warnedQueues = ConcurrentHashMap.newKeySet();
     private final Topology topology;
     private final RabbitTemplate template;
     private final Duration confirmTimeout;
@@ -60,6 +63,7 @@ public class RetryLadder {
      */
     public void handle(Message message, Channel channel, MessageWork work) throws IOException {
         long tag = message.getMessageProperties().getDeliveryTag();
+        warnOnceIfNotManaged(message.getMessageProperties().getConsumerQueue());
         // The work may change the message; decide and copy from its properties as they arrived (R-4).
         MessageProperties arrived = MessagePropertiesBuilder.fromClonedProperties(message.getMessageProperties())
                 .build();
@@ -73,6 +77,15 @@ public class RetryLadder {
             return;
         }
         channel.basicAck(tag, false);
+    }
+
+    /** A queue someone forgot to list shows up on its first message, not only when a message fails. */
+    private void warnOnceIfNotManaged(String queue) {
+        if (queue != null && !rules.containsKey(queue) && warnedQueues.add(queue)) {
+            log.error("Queue '" + queue + "' isn't under retry-ladder.queues, so its failed messages can't be "
+                    + "retried or parked: they are rejected, and lost if the queue has no dead-letter setting. "
+                    + "Add the queue under retry-ladder.queues.");
+        }
     }
 
     private void onFailure(Message message, Channel channel, long tag, Exception error) throws IOException {
