@@ -349,4 +349,39 @@ class RetryFlowTest {
             assertThat(output).doesNotContain("SECRET-BODY-9");
         });
     }
+
+    @Test
+    void workThatClearsTheHeadersCanNotRetryForever() throws Exception { // R-2
+        TestWork work = new TestWork();
+        work.behaviour = m -> {
+            m.getMessageProperties().getHeaders().clear(); // a bug in the app's own code
+            return new IllegalStateException("down");
+        };
+        app("t10", work, "retry-ladder.queues.t10-orders.max-attempts=2").run(ctx -> {
+            RabbitTemplate rabbit = ctx.getBean(RabbitTemplate.class);
+            rabbit.send("", "t10-orders", message("m-10", "{}"));
+            Message parked = rabbit.receive("t10-orders.dlq", 15_000);
+            assertThat(parked).as("parked after max-attempts, not retried forever").isNotNull();
+            assertThat((Object) parked.getMessageProperties().getHeader(Headers.EXHAUSTED_REASON)).isEqualTo("attempts");
+            assertThat(work.deliveries).hasSize(3);
+        });
+    }
+
+    @Test
+    void workThatChangesTheHeadersDoesNotChangeTheRetryCopy() throws Exception { // R-4
+        TestWork work = new TestWork();
+        work.behaviour = m -> {
+            if (m.getMessageProperties().getHeader(Headers.RETRY_COUNT) != null) {
+                return null; // the retry works
+            }
+            m.getMessageProperties().getHeaders().remove("app-header");
+            return new IllegalStateException("down");
+        };
+        app("t11", work, "retry-ladder.queues.t11-orders.window=1m").run(ctx -> {
+            ctx.getBean(RabbitTemplate.class).send("", "t11-orders", message("m-11", "{}"));
+            work.next();
+            Delivery retry = work.next();
+            assertThat((Object) retry.message().getMessageProperties().getHeader("app-header")).isEqualTo("kept");
+        });
+    }
 }

@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -58,16 +59,19 @@ public class RetryLadder {
      */
     public void handle(Message message, Channel channel, MessageWork work) throws IOException {
         long tag = message.getMessageProperties().getDeliveryTag();
+        // The work may change the message; decide and copy from the headers as they arrived.
+        Map<String, Object> arrived = new LinkedHashMap<>(message.getMessageProperties().getHeaders());
         try {
             work.process(message);
         } catch (Exception error) {
-            onFailure(message, channel, tag, error);
+            onFailure(message, arrived, channel, tag, error);
             return;
         }
         channel.basicAck(tag, false);
     }
 
-    private void onFailure(Message message, Channel channel, long tag, Exception error) throws IOException {
+    private void onFailure(Message message, Map<String, Object> arrived, Channel channel, long tag, Exception error)
+            throws IOException {
         String queue = message.getMessageProperties().getConsumerQueue();
         String messageId = message.getMessageProperties().getMessageId();
         StopRule rule = queue == null ? null : rules.get(queue);
@@ -77,8 +81,9 @@ public class RetryLadder {
             channel.basicReject(tag, false);
             return;
         }
-        Decision decision = rule.decide(message.getMessageProperties().getHeaders(), error);
-        Message copy = MessageBuilder.fromClonedMessage(message).copyHeaders(decision.headers()).build();
+        Decision decision = rule.decide(arrived, error);
+        Message copy = MessageBuilder.fromClonedMessage(message).copyHeaders(arrived).copyHeaders(decision.headers())
+                .build();
 
         String failure = switch (decision) {
             case Retry r -> store(topology.retryExchange(), topology.delayRoutingKey(r.delay()), copy);
