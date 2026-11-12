@@ -3,7 +3,7 @@
 **Who this is for:** anyone who wants to know where this project stands, without reading the code.
 **After reading:** you know what works today, what's being built, what's next, and what is still undecided.
 
-Last updated: 2026-11-11 · Size: Small · Current phase: 4 of 5, queues and retry flow
+Last updated: 2026-11-12 · Size: Small · Current phase: 5 of 5, demo and README
 
 ## Where it stands
 
@@ -12,8 +12,8 @@ Last updated: 2026-11-11 · Size: Small · Current phase: 4 of 5, queues and ret
 | 1 | Design doc and decisions | ✅ approved 2026-11-10 |
 | 2 | Project skeleton: Gradle build, Spring Boot auto-configuration, CI, a smoke test against real RabbitMQ | ✅ merged 2026-11-10 |
 | 3 | The ladder and the stop rule, as plain logic with unit tests | ✅ merged 2026-11-11 |
-| 4 | Queues, the retry flow and metrics, tested against real RabbitMQ | 🔄 in review (PR for #3) |
-| 5 | Demo app, README and diagram | ⬜ not started |
+| 4 | Queues, the retry flow and metrics, tested against real RabbitMQ | ✅ merged 2026-11-11 |
+| 5 | Demo app, README and diagram | 🔄 in review (PR for #4) |
 
 ### The road to done
 
@@ -42,15 +42,16 @@ flowchart LR
 ## What works today
 
 Messages are retried in RabbitMQ: the waits grow, then level off. A message is parked when its time runs out, when it never succeeds,
-or when its copy can't be stored. Tested against RabbitMQ 4.1 (R-1 to R-8). The demo doesn't send messages yet.
+or when its copy can't be stored. Tested against RabbitMQ 4.1 (R-1 to R-8).
+The demo shows it: a bad payment is parked at once, and an order is retried until its downstream is back, then processed once.
 
 ## In progress
 
-Phase 4 pull request.
+Phase 5 pull request.
 
 ## Next
 
-1. Phase 5: demo and README (#4).
+1. Add the related article link when it's published (#4 stays open until then).
 
 ## Open decisions
 
@@ -107,10 +108,10 @@ Each phase is one pull request. Tick a box when it's done.
 - [x] Counters, and one log line per retry with no message body (R-7)
 
 ### Phase 5: Demo and README
-- [ ] Demo app: a handler that fails for a while, then works; the logs show each retry
-- [ ] Demo's duplicate-safe handler: a message that finally works is processed once (R-4)
-- [ ] README: pitch, diagram, quick start, settings table, guarantees, and when RabbitMQ 4.3's own retry is the better choice
-- [ ] Clean-room check: no employer names, secrets, emails, IPs or hostnames
+- [x] Demo app: a handler that fails for a while, then works; the logs show each retry
+- [x] Demo's duplicate-safe handler: a message that finally works is processed once (R-4)
+- [x] README: pitch, diagram, quick start, settings table, guarantees, and when RabbitMQ 4.3's own retry is the better choice
+- [x] Clean-room check: no employer names, secrets, emails, IPs or hostnames
 - [ ] Add the related article link
 
 ### Later ideas

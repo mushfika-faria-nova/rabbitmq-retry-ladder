@@ -7,7 +7,7 @@ Spring Boot starter for loss-free RabbitMQ consumer retries with exponential bac
 If you use Kafka, Spring already has `@RetryableTopic`. If you use RabbitMQ, there is no equivalent.
 This library fills that gap, and adds a time budget and an audit trail.
 
-> Status: Phase 4. Retries work against a real RabbitMQ. The demo and a quick start come in Phase 5. Where it stands: [docs/00-status.md](docs/00-status.md). Design: [docs/02-design.md](docs/02-design.md).
+> Status: built and tested. A showcase project, not published to Maven Central. Where it stands: [docs/00-status.md](docs/00-status.md). Design: [docs/02-design.md](docs/02-design.md).
 
 ## What it does
 
@@ -36,6 +36,73 @@ The library logs this ladder at startup, so you can check your settings at a gla
 
 Every message carries its own history in headers: how many retries, when it first failed, when it last waited and for how long.
 When it stops, it is parked in `<queue>.dlq` with the reason: `window`, `attempts` or `non-retryable`.
+
+## Try it
+
+You need Docker and Java 25.
+
+```
+docker compose up -d          # RabbitMQ, management UI on http://localhost:15672 (guest / guest)
+./gradlew :demo:bootRun
+```
+
+The demo's downstream is down for its first 20 seconds. You'll see a bad payment parked at once,
+and an order retried after 2s, 4s, 8s and 8s, then processed. It was sent twice, so the repeat is skipped:
+
+```
+Message payment-1 parked in payments.dlq: queue=payments retryCount=0 reason=non-retryable
+Retry scheduled: messageId=order-1 queue=orders retry=1 wait=2s elapsed=0ms ...
+Retry scheduled: messageId=order-1 queue=orders retry=2 wait=4s elapsed=2066ms ...
+Retry scheduled: messageId=order-1 queue=orders retry=3 wait=8s elapsed=6108ms ...
+Retry scheduled: messageId=order-1 queue=orders retry=4 wait=8s elapsed=14143ms ...
+Order order-1 processed: {"order":1,"item":"book"}
+Order order-1 was already processed, skipping the repeat
+```
+
+Stop it with Ctrl+C, then `docker compose down`.
+
+## Use it
+
+Call `RetryLadder.handle` from a listener in manual ack mode:
+
+```java
+@RabbitListener(queues = "orders", ackMode = "MANUAL")
+public void onOrder(Message message, Channel channel) throws IOException {
+    retryLadder.handle(message, channel, m -> orders.handle(m));
+}
+```
+
+List the queue under `retry-ladder.queues`. At startup the library creates it, its parking queue
+`orders.dlq` and the shared delay queues, so don't declare them yourself.
+The `demo` module is a complete example.
+
+## How it works
+
+```mermaid
+flowchart LR
+    P[Producer] --> Q[(orders)]
+    Q --> A[Your listener + RetryLadder]
+    A -->|failed, retry allowed| D[(delay queues<br/>1m, 2m, 4m, 8m)]
+    D -->|wait is over| Q
+    A -->|stopped| DLQ[(orders.dlq)]
+```
+
+The details, with every failure case, are in [docs/02-design.md](docs/02-design.md).
+
+## Settings
+
+| Setting | Default | What it does |
+|---|---|---|
+| `retry-ladder.initial-delay` | `1m` | First wait after a failure |
+| `retry-ladder.multiplier` | `2` | Each wait is the previous one times this. `1` means a fixed wait |
+| `retry-ladder.max-delay` | `8m` | The waits stop growing here |
+| `retry-ladder.window` | `30m` | Stop retrying this long after the first failure |
+| `retry-ladder.max-attempts` | `100` | Safety limit on tries, used when the time limit can't be worked out |
+| `retry-ladder.non-retryable` | none | Exception classes that can never succeed. A message failing with one is parked at once |
+| `retry-ladder.queues.<name>` | none | The queues the library manages. Each can override the five wait settings above |
+| `retry-ladder.queue-type` | `QUORUM` | Type of your own queues: `QUORUM` or `CLASSIC`. Delay and parking queues are always quorum |
+| `retry-ladder.exchange-prefix` | `retry-ladder` | Name prefix for the exchanges and delay queues |
+| `retry-ladder.confirm-timeout` | `5s` | How long to wait for RabbitMQ to confirm a retry copy or a parked message |
 
 ## Why not RabbitMQ's built-in delayed retry?
 
@@ -73,7 +140,13 @@ Why the broker holds retries at all (and not Resilience4j, Kafka or Redis): [dec
 
 ## Guarantees
 
-- No message is lost while the broker is healthy. A duplicate is possible, so handlers must be safe to run twice.
-- No ordering guarantee: a retried message goes behind newer ones.
+- No message is lost while RabbitMQ is healthy. The original is acked only after RabbitMQ confirms its retry copy or parked copy.
+- A message can arrive twice, so your handler must be safe to run twice. The demo's `OrderHandler` shows a simple way.
+- No ordering: a retried message goes behind newer ones.
+- No thread sleeps while a message waits.
+
+The full list, with what it doesn't promise, is in [docs/02-design.md](docs/02-design.md), section 5.
+
+Built with AI coding assistance under explicit guardrails; every change is reviewed and tested by the author.
 
 Licensed under Apache-2.0.

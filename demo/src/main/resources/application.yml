@@ -2,12 +2,23 @@ spring:
   main:
     banner-mode: off
 
+logging:
+  level:
+    # Shows one line per retry, with its timeline.
+    io.github.mushfikafarianova.retryladder: DEBUG
+
+# Short waits, so the demo finishes in about half a minute. The library's defaults are minutes.
 retry-ladder:
-  initial-delay: 1m      # first wait
-  multiplier: 2          # each wait x 2 (use 1 for a fixed wait)
-  max-delay: 8m          # the waits stop growing here
-  window: 30m            # stop 30 minutes after the first failure
+  initial-delay: 2s
+  multiplier: 2
+  max-delay: 8s
+  window: 1m
+  non-retryable:
+    - io.github.mushfikafarianova.retryladder.demo.BadPaymentException
   queues:
-    orders: {}           # uses the defaults above
-    payments:
-      window: 2h         # only this one changes
+    orders: {}
+    payments: {}
+
+demo:
+  downstream-down-for: 20s
+  send-on-startup: true
