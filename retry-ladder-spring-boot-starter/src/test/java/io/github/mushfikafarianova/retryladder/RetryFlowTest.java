@@ -437,9 +437,9 @@ class RetryFlowTest {
             Message parked = rabbit.receive("t14-orders.dlq", 15_000);
             assertThat(parked).as("parked by the queue's dead-letter setting").isNotNull();
             assertUnchanged(parked, sent);
-            assertThat(ctx.getBean(MeterRegistry.class)
-                    .counter("retry.ladder.park.failed", "queue", "t14-orders", "cause", "work-error").count())
-                    .isEqualTo(1);
+            MeterRegistry meters = ctx.getBean(MeterRegistry.class);
+            assertThat(meters.counter("retry.ladder.work.errors", "queue", "t14-orders").count()).isEqualTo(1);
+            assertThat(meters.find("retry.ladder.park.failed").counter()).as("nothing failed to park").isNull();
             rabbit.send("", "t14-orders", message("next", "{}"));
             work.next(); // boom
             assertThat(work.next().message().getMessageProperties().getMessageId()).isEqualTo("next");

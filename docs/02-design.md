@@ -119,7 +119,50 @@ Headers the library adds: `x-retry-count`, `x-first-failed-at`, `x-original-queu
 
 ## 4. What happens in each case (R-4, R-6)
 
-**It works.** The app's code finishes. The library acks. Done.
+### One message's path
+
+An order fails once, then works. The first wait is 1 minute.
+
+```mermaid
+sequenceDiagram
+    participant Q as orders
+    participant A as App + RetryLadder
+    participant D as delay queue (1 min)
+    Q->>A: deliver (try 1)
+    A->>A: the app's code fails
+    A->>D: copy, x-retry-count 1
+    D-->>A: "stored"
+    A->>Q: ack the original
+    Note over D: waits 1 minute
+    D->>Q: wait is over, back to orders
+    Q->>A: deliver (try 2)
+    A->>A: the app's code works
+    A->>Q: ack. Done
+```
+
+1. RabbitMQ delivers the order. The app's code fails.
+2. The library sends a copy to the 1-minute delay queue, with `x-retry-count` 1 and `x-first-failed-at`.
+   When RabbitMQ says "stored", it acks the original.
+3. After 1 minute, RabbitMQ moves the copy to `<p>.return`, which sends it back to `orders`.
+4. The second try works. The library acks. Done.
+
+If the time limit had run out, step 2 would send the message to `orders.dlq` instead, with the reason.
+
+### Every case
+
+| Case | What the library does | Where the message ends up |
+|---|---|---|
+| It works | Acks | Done |
+| It fails, and a retry is allowed | Sends a copy to the delay queue, waits for "stored", acks the original | Back in the app's queue after the wait |
+| The waits have stopped growing | Same, with the longest wait | Same |
+| Time limit, too many tries, or an error that never succeeds | Sends the original to the parking queue with the reason, waits for "stored", acks | `<queue>.dlq`, with `x-retry-exhausted-reason` |
+| The copy or parked message isn't stored | Rejects the original. `park_failed` goes up | `<queue>.dlq`, moved by RabbitMQ, no reason header |
+| The app's code throws an `Error` | Rejects the original. `work_errors` goes up | `<queue>.dlq`, moved by RabbitMQ, no reason header |
+| The app crashes before the ack | Nothing | The app's queue again, same headers. A duplicate if the copy was stored |
+| The ack fails | Nothing | The app's queue again. Can be a duplicate |
+| A queue the library doesn't manage | Rejects, logs an error | Dropped, unless that queue has its own dead-letter setting |
+
+### Details
 
 **It fails, and a retry is allowed.** The library makes a copy: same body, properties and `messageId`,
 with the headers updated (retry count + 1, start time on the first failure). It sends the copy to the right
@@ -130,8 +173,6 @@ The copy is made from the properties and headers as they arrived, so changes the
 don't reach the copy. The body isn't copied first, so the app's code must not change the body's bytes.
 A persistent message stays persistent. Spring drops that setting when it receives a message, so the library
 sets it again on the copy.
-
-**The waits have stopped growing.** Same as above. The copy always goes to the longest-wait queue.
 
 **Time limit reached, too many tries, or an error that never succeeds.** The library sends the original
 message (same body, properties and `messageId`) to the parking queue with the reason (`window`, `attempts`
@@ -152,8 +193,8 @@ quorum queues are the default (decision 2).
 
 **The app's code throws an `Error`**, not an exception, for example an `AssertionError`. A retry could hit
 the same bug. If the `Error` reached Spring, it would stop the listener, and by default the whole app.
-So the library rejects the message, and RabbitMQ moves it to the parking queue. The `park_failed` counter
-goes up with cause `work-error`. Only an `Error` that means the JVM itself is broken, such as running out of
+So the library rejects the message, and RabbitMQ moves it to the parking queue. The `work_errors` counter
+goes up (decision 13). Only an `Error` that means the JVM itself is broken, such as running out of
 memory, is passed on to Spring (decision 11).
 
 **The app crashes before the ack.** RabbitMQ still has the original. When the connection closes, it
@@ -202,10 +243,11 @@ The backlog in [00-status.md](00-status.md) lists them by phase.
 Counters:
 - `retry_ladder_scheduled_total{queue,tier}`: retries planned. `tier` is the wait in ms.
 - `retry_ladder_exhausted_total{queue,reason}`: messages parked.
-- `retry_ladder_park_failed_total{queue,cause}`: copies or parked messages RabbitMQ didn't confirm, and
-  messages rejected after an `Error` (cause `work-error`).
+- `retry_ladder_park_failed_total{queue,cause}`: copies or parked messages RabbitMQ didn't confirm.
+- `retry_ladder_work_errors_total{queue}`: messages parked because the app's code threw an `Error`.
 
-In Micrometer they are named `retry.ladder.scheduled`, `retry.ladder.exhausted` and `retry.ladder.park.failed`.
+In Micrometer they are named `retry.ladder.scheduled`, `retry.ladder.exhausted`, `retry.ladder.park.failed`
+and `retry.ladder.work.errors`.
 Prometheus shows them with the names above.
 
 Logs:

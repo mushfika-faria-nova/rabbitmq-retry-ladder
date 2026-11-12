@@ -34,6 +34,18 @@ final class StopRule {
         this.clock = clock;
     }
 
+    /**
+     * Only a parked message has x-retry-exhausted-reason, so a message with it was moved back after a fix.
+     * Drops its old history so it starts again (decision 10). Returns true if it did.
+     */
+    static boolean resetIfReplayed(Map<String, Object> headers) {
+        if (!headers.containsKey(Headers.EXHAUSTED_REASON)) {
+            return false;
+        }
+        Headers.HISTORY.forEach(headers::remove);
+        return true;
+    }
+
     Decision decide(Map<String, Object> headers, Throwable error) {
         long now = clock.millis();
         int retries = retryCount(headers);

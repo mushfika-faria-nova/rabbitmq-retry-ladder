@@ -86,11 +86,9 @@ public class RetryLadder {
             channel.basicReject(tag, false);
             return;
         }
-        if (props.getHeaders().containsKey(Headers.EXHAUSTED_REASON)) {
-            // Only a parked message has this header, so this one was replayed after a fix (decision 10).
+        if (StopRule.resetIfReplayed(props.getHeaders())) {
             log.info("Message " + messageId + " on queue '" + queue + "' was replayed from "
                     + Topology.parkingQueue(queue) + "; starting a fresh retry history");
-            Headers.HISTORY.forEach(props.getHeaders()::remove);
         }
         Decision decision = rule.decide(props.getHeaders(), error);
         Message copy = MessageBuilder.fromClonedMessage(message).copyHeaders(decision.headers()).build();
@@ -102,12 +100,11 @@ public class RetryLadder {
             case Park p -> store(topology.parkingExchange(), Topology.parkingQueue(queue), copy);
         };
         if (failure != null) {
-            // Not proven stored: reject without requeue, so the queue's own dead-letter setting parks it.
             meters.counter("retry.ladder.park.failed", "queue", queue, "cause", failure).increment();
             log.error("Could not store message " + messageId + " from queue '" + queue + "' (" + failure
                     + "); rejecting it so RabbitMQ parks it in " + Topology.parkingQueue(queue)
                     + ". retryCount=" + decision.headers().get(Headers.RETRY_COUNT));
-            channel.basicReject(tag, false);
+            parkByReject(channel, tag);
             return;
         }
         switch (decision) {
@@ -123,23 +120,31 @@ public class RetryLadder {
 
     /**
      * The work threw an Error. A retry could hit it again, and letting it reach Spring stops the listener
-     * (and by default the app). So reject without requeue: the queue's dead-letter setting parks it (decision 11).
+     * (and by default the app). So park it by rejecting it (decisions 11 and 13).
      */
     private void onError(MessageProperties arrived, Channel channel, long tag, Error error) throws IOException {
         String queue = String.valueOf(arrived.getConsumerQueue());
-        meters.counter("retry.ladder.park.failed", "queue", queue, "cause", "work-error").increment();
+        meters.counter("retry.ladder.work.errors", "queue", queue).increment();
         String where = rules.containsKey(queue) ? "so RabbitMQ parks it in " + Topology.parkingQueue(queue)
                 : "(retry-ladder doesn't manage this queue)";
         log.error("Message " + arrived.getMessageId() + " from queue '" + queue + "': the work threw "
                 + error.getClass().getName() + "; rejecting it " + where, error);
         try {
-            channel.basicReject(tag, false);
+            parkByReject(channel, tag);
         } finally {
             // Out of memory and the like: the JVM itself is broken, so let Spring handle it as it does today.
             if (error instanceof VirtualMachineError && !(error instanceof StackOverflowError)) {
                 throw error;
             }
         }
+    }
+
+    /**
+     * Rejects without requeue. On a managed queue, the dead-letter setting Topology gave it then moves the
+     * message to its parking queue: the library's safety net when it can't store a copy itself.
+     */
+    private static void parkByReject(Channel channel, long tag) throws IOException {
+        channel.basicReject(tag, false);
     }
 
     /** Publishes and waits for RabbitMQ's confirm. Returns null when stored, or the reason it isn't proven stored. */
