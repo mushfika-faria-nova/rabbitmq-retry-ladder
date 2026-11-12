@@ -17,6 +17,7 @@ import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.Message;
+import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
@@ -93,6 +94,8 @@ class RetryFlowTest {
             c.setAcknowledgeMode(AcknowledgeMode.MANUAL);
             c.setPrefetchCount(1);
             c.setMessageListener((ChannelAwareMessageListener) (m, ch) -> ladder.handle(m, ch, work::process));
+            // Spring's default exits the JVM when an Error reaches the container; keep the test JVM alive.
+            c.setJavaLangErrorHandler(e -> { });
             return c;
         }
 
@@ -135,6 +138,7 @@ class RetryFlowTest {
         assertThat(p.getMessageId()).isEqualTo(sent.getMessageProperties().getMessageId());
         assertThat(p.getContentType()).isEqualTo("application/json");
         assertThat((Object) p.getHeader("app-header")).isEqualTo("kept");
+        assertThat(p.getReceivedDeliveryMode()).isEqualTo(sent.getMessageProperties().getDeliveryMode());
     }
 
     @Test
@@ -382,6 +386,89 @@ class RetryFlowTest {
             work.next();
             Delivery retry = work.next();
             assertThat((Object) retry.message().getMessageProperties().getHeader("app-header")).isEqualTo("kept");
+        });
+    }
+
+    @Test
+    void workThatChangesThePropertiesDoesNotChangeTheRetryCopy() throws Exception { // R-4
+        TestWork work = new TestWork();
+        work.behaviour = m -> {
+            if (m.getMessageProperties().getHeader(Headers.RETRY_COUNT) != null) {
+                return null;
+            }
+            m.getMessageProperties().setMessageId("changed-by-the-work");
+            return new IllegalStateException("down");
+        };
+        app("t12", work, "retry-ladder.queues.t12-orders.window=1m").run(ctx -> {
+            ctx.getBean(RabbitTemplate.class).send("", "t12-orders", message("m-12", "{}"));
+            work.next();
+            assertThat(work.next().message().getMessageProperties().getMessageId()).isEqualTo("m-12");
+        });
+    }
+
+    @Test
+    void aPersistentMessageStaysPersistentOnAClassicQueue() throws Exception { // R-4
+        TestWork work = new TestWork();
+        work.behaviour = m -> m.getMessageProperties().getHeader(Headers.RETRY_COUNT) == null
+                ? new IllegalStateException("down") : null;
+        app("t13", work, "retry-ladder.queue-type=CLASSIC", "retry-ladder.queues.t13-orders.window=1m").run(ctx -> {
+            Message sent = message("m-13", "{}");
+            assertThat(sent.getMessageProperties().getDeliveryMode()).isEqualTo(MessageDeliveryMode.PERSISTENT);
+            ctx.getBean(RabbitTemplate.class).send("", "t13-orders", sent);
+            work.next();
+            assertThat(work.next().message().getMessageProperties().getReceivedDeliveryMode())
+                    .as("delivery mode of the retry").isEqualTo(MessageDeliveryMode.PERSISTENT);
+        });
+    }
+
+    @Test
+    void anErrorFromTheWorkParksTheMessageAndTheListenerKeepsGoing() throws Exception { // R-4
+        TestWork work = new TestWork();
+        work.behaviour = m -> {
+            if ("boom".equals(m.getMessageProperties().getMessageId())) {
+                throw new AssertionError("a bug in the app's code");
+            }
+            return null;
+        };
+        app("t14", work, "retry-ladder.queues.t14-orders.window=1m").run(ctx -> {
+            RabbitTemplate rabbit = ctx.getBean(RabbitTemplate.class);
+            Message sent = message("boom", "{}");
+            rabbit.send("", "t14-orders", sent);
+            Message parked = rabbit.receive("t14-orders.dlq", 15_000);
+            assertThat(parked).as("parked by the queue's dead-letter setting").isNotNull();
+            assertUnchanged(parked, sent);
+            assertThat(ctx.getBean(MeterRegistry.class)
+                    .counter("retry.ladder.park.failed", "queue", "t14-orders", "cause", "work-error").count())
+                    .isEqualTo(1);
+            rabbit.send("", "t14-orders", message("next", "{}"));
+            work.next(); // boom
+            assertThat(work.next().message().getMessageProperties().getMessageId()).isEqualTo("next");
+        });
+    }
+
+    @Test
+    void aReplayedMessageStartsAFreshHistory() throws Exception { // R-2, R-6, decision 10
+        TestWork work = new TestWork();
+        java.util.concurrent.atomic.AtomicInteger tries = new java.util.concurrent.atomic.AtomicInteger();
+        work.behaviour = m -> tries.getAndIncrement() == 0 ? new IllegalStateException("down") : null;
+        app("t15", work, "retry-ladder.queues.t15-orders.window=1m").run(ctx -> {
+            // Parked yesterday after its time ran out, then moved back from t15-orders.dlq after a fix.
+            Message replayed = message("m-15", "{}");
+            long yesterday = System.currentTimeMillis() - 86_400_000L;
+            MessageProperties p = replayed.getMessageProperties();
+            p.setHeader(Headers.RETRY_COUNT, 5);
+            p.setHeader(Headers.FIRST_FAILED_AT, yesterday);
+            p.setHeader(Headers.LAST_RETRY_AT, yesterday);
+            p.setHeader(Headers.RETRY_DELAY_MS, 800L);
+            p.setHeader(Headers.EXHAUSTED_REASON, "window");
+            p.setHeader(Headers.EXHAUSTED_AT, yesterday);
+            long sentAt = System.currentTimeMillis();
+            ctx.getBean(RabbitTemplate.class).send("", "t15-orders", replayed);
+            work.next();
+            MessageProperties retry = work.next().message().getMessageProperties();
+            assertThat((Object) retry.getHeader(Headers.RETRY_COUNT)).isEqualTo(1);
+            assertThat((Long) retry.getHeader(Headers.FIRST_FAILED_AT)).isGreaterThanOrEqualTo(sentAt);
+            assertThat(retry.getHeaders()).doesNotContainKeys(Headers.EXHAUSTED_REASON, Headers.EXHAUSTED_AT);
         });
     }
 }

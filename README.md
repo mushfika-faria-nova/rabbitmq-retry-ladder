@@ -36,6 +36,7 @@ The library logs this ladder at startup, so you can check your settings at a gla
 
 Every message carries its own history in headers: how many retries, when it first failed, when it last waited and for how long.
 When it stops, it is parked in `<queue>.dlq` with the reason: `window`, `attempts` or `non-retryable`.
+After a fix, move the parked messages back to the queue. A message the library parked starts with a fresh history.
 
 ## Try it
 
@@ -99,8 +100,8 @@ The details, with every failure case, are in [docs/02-design.md](docs/02-design.
 |---|---|---|
 | `retry-ladder.initial-delay` | `1m` | First wait after a failure |
 | `retry-ladder.multiplier` | `2` | Each wait is the previous one times this. `1` means a fixed wait |
-| `retry-ladder.max-delay` | `8m` | The waits stop growing here |
-| `retry-ladder.window` | `30m` | Stop retrying this long after the first failure |
+| `retry-ladder.max-delay` | `8m` | The waits stop growing here. Must be under 24 days |
+| `retry-ladder.window` | `30m` | Stop retrying this long after the first failure. Must be at least `initial-delay` |
 | `retry-ladder.max-attempts` | `100` | Safety limit on tries, used when the time limit can't be worked out |
 | `retry-ladder.non-retryable` | none | Exception classes that can never succeed. A message failing with one is parked at once |
 | `retry-ladder.queues.<name>` | none | The queues the library manages. Each can override the five wait settings above |
@@ -150,6 +151,7 @@ Why the broker holds retries at all (and not Resilience4j, Kafka or Redis): [dec
 - A message can arrive twice, so your handler must be safe to run twice. The demo's `OrderHandler` shows a simple way.
 - No ordering: a retried message goes behind newer ones.
 - No thread sleeps while a message waits.
+- If your code throws an `Error`, such as an `AssertionError`, the message is parked and the app keeps running.
 
 The full list, with what it doesn't promise, is in [docs/02-design.md](docs/02-design.md), section 5.
 

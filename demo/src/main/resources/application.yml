@@ -15,6 +15,7 @@ retry-ladder:
   window: 1m
   non-retryable:
     - io.github.mushfikafarianova.retryladder.demo.BadPaymentException
+    - io.github.mushfikafarianova.retryladder.demo.MissingMessageIdException
   queues:
     orders: {}
     payments: {}

@@ -66,6 +66,8 @@ final class RetryPlans {
         // A delay queue's TTL is an int of milliseconds; a longer wait would overflow it.
         require(max.compareTo(Duration.ofDays(24)) < 0, where + "max-delay must be under 24 days");
         requirePositive(window, where + "window");
+        // A window shorter than the first wait would park every failure at once (decision 12).
+        require(window.compareTo(initial) >= 0, where + "window must not be less than initial-delay");
         require(maxAttempts >= 1, where + "max-attempts must be 1 or more");
 
         return new QueuePlan(queue, waits(initial, multiplier, max, where), window, maxAttempts);
@@ -81,12 +83,10 @@ final class RetryPlans {
         double next = initial.toMillis();
         while (Math.round(next) < maxMs) {
             long ms = Math.round(next);
-            // Rounding to whole ms can repeat a value when the multiplier is close to 1.
-            if (waits.isEmpty() || ms > waits.getLast().toMillis()) {
-                waits.add(Duration.ofMillis(ms));
-            }
+            waits.add(Duration.ofMillis(ms));
             tooMany(waits.size(), where);
-            next *= multiplier;
+            // At least 1 ms more each step, so a multiplier just above 1 fails fast instead of looping for ever.
+            next = Math.max(next * multiplier, ms + 1);
         }
         waits.add(max);
         tooMany(waits.size(), where);

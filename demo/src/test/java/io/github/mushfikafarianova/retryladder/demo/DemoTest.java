@@ -58,6 +58,16 @@ class DemoTest {
     }
 
     @Test
+    void anOrderWithoutAnIdIsParkedAtOnce() {
+        // Without an ID the handler can't skip a repeat, so it isn't retried.
+        rabbit.send("", "orders", message(null, "{\"order\":10}"));
+        Message parked = rabbit.receive("orders.dlq", 15_000);
+        assertThat(parked).isNotNull();
+        assertThat((Object) parked.getMessageProperties().getHeader("x-retry-exhausted-reason"))
+                .isEqualTo("non-retryable");
+    }
+
+    @Test
     void aBadPaymentIsParkedAtOnce() {
         rabbit.send("", "payments", message("payment-9", "{\"payment\":9,\"amount\":-5}"));
         Message parked = rabbit.receive("payments.dlq", 15_000);

@@ -47,7 +47,7 @@ The demo shows it: a bad payment is parked at once, and an order is retried unti
 
 ## In progress
 
-Nothing. The code is done.
+Fixes from a code review of the whole repo (pull request).
 
 ## Next
 
@@ -55,7 +55,13 @@ Nothing. The code is done.
 
 ## Open decisions
 
-None. Decided on 2026-11-09:
+None. Decided on 2026-11-12:
+
+- A message moved back from the parking queue starts a fresh history ([decision 10](03-decisions.md)).
+- An `Error` from the app's code parks the message instead of stopping the app ([decision 11](03-decisions.md)).
+- A `window` shorter than `initial-delay` stops startup ([decision 12](03-decisions.md)).
+
+Decided on 2026-11-09:
 
 - Errors that can never succeed skip the retries (R-3, [decision 5](03-decisions.md)).
 - The README explains when RabbitMQ 4.3's built-in delayed retry is the better choice, and why this library suits
@@ -114,8 +120,18 @@ Each phase is one pull request. Tick a box when it's done.
 - [x] Clean-room check: no employer names, secrets, emails, IPs or hostnames
 - [ ] Add the related article link
 
+### Review fixes
+- [x] An `Error` from the app's code parks the message; the listener keeps going (R-4, decision 11)
+- [x] Retry and parked copies keep the delivery mode, and ignore changes the app's code made to the message (R-4)
+- [x] A replayed message starts a fresh history (R-2, decision 10)
+- [x] A broken start time on the first failure is replaced (R-2)
+- [x] Startup refuses a `max-delay` of 24 days or more, and a `window` shorter than `initial-delay` (R-8, decision 12)
+- [x] A multiplier just above 1 fails fast at startup instead of hanging (R-1)
+- [x] Demo: an order without a `messageId` is parked at once
+
 ### Later ideas
 - Compare with RabbitMQ 4.3's built-in delayed retry once both run.
+- Also reset the history of a replayed message that RabbitMQ parked itself, using its `x-death` header (needs a broker test first).
 
 ## Not built yet / known limits
 

@@ -38,7 +38,8 @@ final class StopRule {
         long now = clock.millis();
         int retries = retryCount(headers);
         Long firstFailedAt = millis(headers.get(Headers.FIRST_FAILED_AT));
-        boolean firstFailure = !headers.containsKey(Headers.FIRST_FAILED_AT) && retries == 0;
+        // No usable start time and no retries yet: a broken value counts as missing here (rule 3).
+        boolean firstFailure = firstFailedAt == null && retries == 0;
         if (firstFailure) {
             firstFailedAt = now;
         }
