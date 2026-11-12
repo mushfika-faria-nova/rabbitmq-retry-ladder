@@ -1,7 +1,21 @@
-# Local RabbitMQ for the demo. Management UI: http://localhost:15672 (guest / guest).
+# RabbitMQ and the demo app. Management UI: http://localhost:15672 (guest / guest).
 services:
   rabbitmq:
     image: rabbitmq:4.1-management
     ports:
       - "5672:5672"
       - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  demo:
+    build: .
+    profiles: [demo]   # only starts when asked for: docker compose --profile demo up
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SPRING_RABBITMQ_HOST: rabbitmq   # inside Docker the broker is not on localhost

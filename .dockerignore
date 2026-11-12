@@ -1,0 +1,10 @@
+# Only the build files and sources go into the image build.
+**/build
+.gradle
+.git
+.github
+.idea
+.claude
+.handoffs
+docs
+*.md

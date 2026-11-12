@@ -39,12 +39,13 @@ When it stops, it is parked in `<queue>.dlq` with the reason: `window`, `attempt
 
 ## Try it
 
-You need Docker and Java 25.
+You need only Docker:
 
 ```
-docker compose up -d          # RabbitMQ, management UI on http://localhost:15672 (guest / guest)
-./gradlew :demo:bootRun
+docker compose --profile demo up --build --attach demo
 ```
+
+This starts RabbitMQ (management UI on http://localhost:15672, guest / guest), builds the demo inside Docker and shows its log.
 
 The demo's downstream is down for its first 20 seconds. You'll see a bad payment parked at once,
 and an order retried after 2s, 4s, 8s and 8s, then processed. It was sent twice, so the repeat is skipped:
@@ -59,7 +60,10 @@ Order order-1 processed: {"order":1,"item":"book"}
 Order order-1 was already processed, skipping the repeat
 ```
 
-Stop it with Ctrl+C, then `docker compose down`.
+Stop it with Ctrl+C, then `docker compose --profile demo down`.
+
+With Java 25 installed, you can run the demo from Gradle instead: `docker compose up -d` starts only RabbitMQ,
+then `./gradlew :demo:bootRun`.
 
 ## Use it
 
@@ -135,7 +139,9 @@ Why the broker holds retries at all (and not Resilience4j, Kafka or Redis): [dec
 | `gradlew`, `gradlew.bat`, `gradle/` | the Gradle wrapper and the pinned versions |
 | `retry-ladder-spring-boot-starter/` | the library |
 | `demo/` | an example app |
-| `compose.yaml` | RabbitMQ for local runs |
+| `compose.yaml` | RabbitMQ, and the demo with `--profile demo` |
+| `Dockerfile` | builds and runs the demo in Docker |
+| `.dockerignore` | keeps local files out of the Docker build |
 | `.github/workflows/` | CI: build and all tests on every pull request |
 
 ## Guarantees

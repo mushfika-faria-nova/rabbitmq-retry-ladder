@@ -23,3 +23,8 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
 }
+
+// The demo is an app: build only the runnable jar, not the extra plain one.
+tasks.jar {
+    enabled = false
+}
