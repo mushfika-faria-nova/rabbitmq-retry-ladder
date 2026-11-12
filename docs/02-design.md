@@ -3,7 +3,7 @@
 **Who this is for:** developers who build, review or use the library.
 **After reading:** you know how each wait is worked out, when retries stop, which queues the library creates, what happens when something fails, and what it doesn't promise.
 
-Status: **Accepted 2026-11-10.** No Java code yet.
+Status: **Accepted 2026-11-10.** Built in Phases 2 to 5.
 
 Words used here: a **delay queue** is where a message waits before its next try. A **parking queue**
 (`<queue>.dlq`) is where a message goes when it won't be retried any more. To **ack** a message is to tell
@@ -124,6 +124,9 @@ or `non-retryable`), waits for "stored", then acks the original.
 **The copy isn't stored.** RabbitMQ sent it back (no queue took it), said no, or didn't answer in time.
 The library doesn't ack. It rejects the original, and RabbitMQ moves it to the parking queue.
 The `park_failed` counter goes up.
+
+A message parked this way has no `x-retry-exhausted-reason` header. RabbitMQ's `x-death` header shows it was
+rejected, and the log and the `park_failed` counter show why.
 Putting it back would loop, and acking would lose it. Spring records a "sent back" before the "stored"
 reply completes, so the check is safe. No answer in time is unclear (the copy may exist), so this case can
 cause a duplicate.

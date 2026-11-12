@@ -3,7 +3,7 @@
 **Who this is for:** anyone who wants to know where this project stands, without reading the code.
 **After reading:** you know what works today, what's being built, what's next, and what is still undecided.
 
-Last updated: 2026-11-12 · Size: Small · Current phase: 5 of 5, demo and README
+Last updated: 2026-11-12 · Size: Small · Current phase: 5 of 5, waiting for the article link
 
 ## Where it stands
 
@@ -13,7 +13,7 @@ Last updated: 2026-11-12 · Size: Small · Current phase: 5 of 5, demo and READM
 | 2 | Project skeleton: Gradle build, Spring Boot auto-configuration, CI, a smoke test against real RabbitMQ | ✅ merged 2026-11-10 |
 | 3 | The ladder and the stop rule, as plain logic with unit tests | ✅ merged 2026-11-11 |
 | 4 | Queues, the retry flow and metrics, tested against real RabbitMQ | ✅ merged 2026-11-11 |
-| 5 | Demo app, README and diagram | 🔄 in review (PR for #4) |
+| 5 | Demo app, README and diagram | ✅ merged 2026-11-12 (article link still to add, #4) |
 
 ### The road to done
 
@@ -47,7 +47,7 @@ The demo shows it: a bad payment is parked at once, and an order is retried unti
 
 ## In progress
 
-Phase 5 pull request.
+Nothing. The code is done.
 
 ## Next
 
