@@ -62,6 +62,7 @@ class SettingsTest {
             "retry-ladder.initial-delay=0s               | retry-ladder.queues.orders: initial-delay must be at least 1ms",
             "retry-ladder.multiplier=0.5                 | retry-ladder.queues.orders: multiplier must be 1 or more",
             "retry-ladder.max-delay=30s                  | retry-ladder.queues.orders: max-delay must not be less than initial-delay",
+            "retry-ladder.max-delay=25d                  | retry-ladder.queues.orders: max-delay must be under 24 days",
             "retry-ladder.window=0s                      | retry-ladder.queues.orders: window must be more than 0",
             "retry-ladder.queues.payments.max-attempts=0 | retry-ladder.queues.payments: max-attempts must be 1 or more",
             "retry-ladder.queues.payments.window=-1m     | retry-ladder.queues.payments: window must be more than 0",
