@@ -5,7 +5,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -16,6 +15,8 @@ import org.apache.commons.logging.LogFactory;
 import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
+import org.springframework.amqp.core.MessageProperties;
+import org.springframework.amqp.core.MessagePropertiesBuilder;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
@@ -55,25 +56,30 @@ public class RetryLadder {
 
     /**
      * Runs the work for one message. On success the message is acked. On failure it is retried after a
-     * wait, or parked. Only throws if talking to RabbitMQ fails (the ack or the reject).
+     * wait, or parked. If the work throws an {@link Error}, the message is rejected so RabbitMQ parks it
+     * (decision 11). Throws only if talking to RabbitMQ fails, or the Error means the JVM itself is broken.
      */
     public void handle(Message message, Channel channel, MessageWork work) throws IOException {
         long tag = message.getMessageProperties().getDeliveryTag();
-        // The work may change the message; decide and copy from the headers as they arrived.
-        Map<String, Object> arrived = new LinkedHashMap<>(message.getMessageProperties().getHeaders());
+        // The work may change the message; decide and copy from its properties as they arrived (R-4).
+        MessageProperties arrived = MessagePropertiesBuilder.fromClonedProperties(message.getMessageProperties())
+                .build();
         try {
             work.process(message);
         } catch (Exception error) {
-            onFailure(message, arrived, channel, tag, error);
+            onFailure(new Message(message.getBody(), arrived), channel, tag, error);
+            return;
+        } catch (Error error) {
+            onError(arrived, channel, tag, error);
             return;
         }
         channel.basicAck(tag, false);
     }
 
-    private void onFailure(Message message, Map<String, Object> arrived, Channel channel, long tag, Exception error)
-            throws IOException {
-        String queue = message.getMessageProperties().getConsumerQueue();
-        String messageId = message.getMessageProperties().getMessageId();
+    private void onFailure(Message message, Channel channel, long tag, Exception error) throws IOException {
+        MessageProperties props = message.getMessageProperties();
+        String queue = props.getConsumerQueue();
+        String messageId = props.getMessageId();
         StopRule rule = queue == null ? null : rules.get(queue);
         if (rule == null) {
             log.error("Message " + messageId + " came from queue '" + queue + "', which retry-ladder doesn't manage; "
@@ -81,9 +87,16 @@ public class RetryLadder {
             channel.basicReject(tag, false);
             return;
         }
-        Decision decision = rule.decide(arrived, error);
-        Message copy = MessageBuilder.fromClonedMessage(message).copyHeaders(arrived).copyHeaders(decision.headers())
-                .build();
+        if (props.getHeaders().containsKey(Headers.EXHAUSTED_REASON)) {
+            // Only a parked message has this header, so this one was replayed after a fix (decision 10).
+            log.info("Message " + messageId + " on queue '" + queue + "' was replayed from "
+                    + Topology.parkingQueue(queue) + "; starting a fresh retry history");
+            Headers.HISTORY.forEach(props.getHeaders()::remove);
+        }
+        Decision decision = rule.decide(props.getHeaders(), error);
+        Message copy = MessageBuilder.fromClonedMessage(message).copyHeaders(decision.headers()).build();
+        // Spring clears the delivery mode on receive; send the copy with the one the original had (R-4).
+        copy.getMessageProperties().setDeliveryMode(props.getReceivedDeliveryMode());
 
         String failure = switch (decision) {
             case Retry r -> store(topology.retryExchange(), topology.delayRoutingKey(r.delay()), copy);
@@ -107,6 +120,26 @@ public class RetryLadder {
             }
         }
         channel.basicAck(tag, false);
+    }
+
+    /**
+     * The work threw an Error. A retry could hit it again, and letting it reach Spring stops the listener
+     * (and by default the app). So reject without requeue: the queue's dead-letter setting parks it (decision 11).
+     */
+    private void onError(MessageProperties arrived, Channel channel, long tag, Error error) throws IOException {
+        String queue = String.valueOf(arrived.getConsumerQueue());
+        meters.counter("retry.ladder.park.failed", "queue", queue, "cause", "work-error").increment();
+        log.error("Message " + arrived.getMessageId() + " from queue '" + queue + "': the work threw "
+                + error.getClass().getName() + "; rejecting it so RabbitMQ parks it in "
+                + Topology.parkingQueue(queue), error);
+        try {
+            channel.basicReject(tag, false);
+        } finally {
+            // Out of memory and the like: the JVM itself is broken, so let Spring handle it as it does today.
+            if (error instanceof VirtualMachineError && !(error instanceof StackOverflowError)) {
+                throw error;
+            }
+        }
     }
 
     /** Publishes and waits for RabbitMQ's confirm. Returns null when stored, or the reason it isn't proven stored. */

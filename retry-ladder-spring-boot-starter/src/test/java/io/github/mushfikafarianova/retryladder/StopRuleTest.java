@@ -60,6 +60,14 @@ class StopRuleTest {
         }
 
         @Test
+        void aBrokenStartTimeOnTheFirstFailureIsReplaced() {
+            // With no retries yet, a start time that can't be read counts as missing, so the time limit still works.
+            Decision d = ruleAt(T0).decide(headers(Headers.FIRST_FAILED_AT, "abc"), DOWN);
+            assertThat(d).isInstanceOf(Retry.class);
+            assertThat(d.headers()).containsEntry(Headers.FIRST_FAILED_AT, T0).containsEntry(Headers.RETRY_COUNT, 1);
+        }
+
+        @Test
         void aRetryLandingExactlyOnTheLimitIsAllowed() {
             // Failure 5 at 22m: the next wait is 8m, landing at exactly 30m.
             Decision d = ruleAt(T0 + 22 * MIN).decide(headers(Headers.RETRY_COUNT, 4, Headers.FIRST_FAILED_AT, T0), DOWN);

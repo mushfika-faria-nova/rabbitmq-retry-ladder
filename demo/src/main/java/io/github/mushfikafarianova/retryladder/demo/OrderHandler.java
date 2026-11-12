@@ -31,6 +31,9 @@ public class OrderHandler {
 
     public void handle(Message message) {
         String id = message.getMessageProperties().getMessageId();
+        if (id == null) {
+            throw new MissingMessageIdException("an order needs a messageId, so a repeat can be skipped");
+        }
         if (done.contains(id)) {
             skipped.incrementAndGet();
             log.info("Order " + id + " was already processed, skipping the repeat");
