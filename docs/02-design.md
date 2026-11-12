@@ -124,12 +124,12 @@ or `non-retryable`), waits for "stored", then acks the original.
 **The copy isn't stored.** RabbitMQ sent it back (no queue took it), said no, or didn't answer in time.
 The library doesn't ack. It rejects the original, and RabbitMQ moves it to the parking queue.
 The `park_failed` counter goes up.
-
-A message parked this way has no `x-retry-exhausted-reason` header. RabbitMQ's `x-death` header shows it was
-rejected, and the log and the `park_failed` counter show why.
 Putting it back would loop, and acking would lose it. Spring records a "sent back" before the "stored"
 reply completes, so the check is safe. No answer in time is unclear (the copy may exist), so this case can
 cause a duplicate.
+
+A message parked this way has no `x-retry-exhausted-reason` header. RabbitMQ's `x-death` header shows it was
+rejected, and the log and the `park_failed` counter show why.
 
 **Parking fails too.** Same: reject. The queue's own dead-letter setting is the last safety net. That's why
 quorum queues are the default (decision 2).
