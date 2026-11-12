@@ -39,15 +39,19 @@ public class RetryLadderAutoConfiguration {
     }
 
     @Bean
-    Declarables retryLadderTopology(RetryPlans plans, RetryLadderProperties properties) {
-        return new Declarables(new Topology(properties.getExchangePrefix())
-                .declarables(plans.plans(), properties.getQueueType()));
+    Topology retryLadderNames(RetryLadderProperties properties) {
+        return new Topology(properties.getExchangePrefix());
     }
 
     @Bean
-    RetryLadder retryLadder(RetryPlans plans, RetryLadderProperties properties,
+    Declarables retryLadderTopology(Topology names, RetryPlans plans, RetryLadderProperties properties) {
+        return new Declarables(names.declarables(plans.plans(), properties.getQueueType()));
+    }
+
+    @Bean
+    RetryLadder retryLadder(RetryPlans plans, Topology names, RetryLadderProperties properties,
             RetryLadderConnection connection, ObjectProvider<MeterRegistry> meters) {
-        return new RetryLadder(plans, new Topology(properties.getExchangePrefix()), connection.template(),
+        return new RetryLadder(plans, names, connection.template(),
                 properties.getConfirmTimeout(), meters.getIfAvailable(SimpleMeterRegistry::new), Clock.systemUTC());
     }
 

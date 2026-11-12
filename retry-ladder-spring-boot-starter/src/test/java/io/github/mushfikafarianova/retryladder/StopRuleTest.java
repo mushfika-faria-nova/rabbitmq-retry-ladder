@@ -197,4 +197,27 @@ class StopRuleTest {
                     .containsEntry(Headers.EXHAUSTED_REASON, "non-retryable");
         }
     }
+
+    @Nested
+    class Replay { // R-2, decision 10
+
+        @Test
+        void aReplayedMessageLosesItsOldHistoryAndStartsAgain() {
+            Map<String, Object> h = headers(Headers.RETRY_COUNT, 5, Headers.FIRST_FAILED_AT, T0 - 60 * MIN,
+                    Headers.LAST_RETRY_AT, T0 - 40 * MIN, Headers.RETRY_DELAY_MS, 8 * MIN,
+                    Headers.EXHAUSTED_REASON, "window", Headers.EXHAUSTED_AT, T0 - 30 * MIN, "app-header", "kept");
+            assertThat(StopRule.resetIfReplayed(h)).isTrue();
+            assertThat(h).containsOnlyKeys("app-header");
+            Decision d = ruleAt(T0).decide(h, DOWN);
+            assertThat(d).isInstanceOf(Retry.class);
+            assertThat(d.headers()).containsEntry(Headers.FIRST_FAILED_AT, T0).containsEntry(Headers.RETRY_COUNT, 1);
+        }
+
+        @Test
+        void aMessageThatWasNeverParkedKeepsItsHistory() {
+            Map<String, Object> h = headers(Headers.RETRY_COUNT, 2, Headers.FIRST_FAILED_AT, T0 - MIN);
+            assertThat(StopRule.resetIfReplayed(h)).isFalse();
+            assertThat(h).containsEntry(Headers.RETRY_COUNT, 2).containsEntry(Headers.FIRST_FAILED_AT, T0 - MIN);
+        }
+    }
 }
