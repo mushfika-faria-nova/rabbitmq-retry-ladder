@@ -131,6 +131,7 @@ Each phase is one pull request. Tick a box when it's done.
 
 ### Later ideas
 - Compare with RabbitMQ 4.3's built-in delayed retry once both run.
+- Also reset the history of a replayed message that RabbitMQ parked itself, using its `x-death` header (needs a broker test first).
 
 ## Not built yet / known limits
 

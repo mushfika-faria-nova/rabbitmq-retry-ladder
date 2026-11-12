@@ -83,10 +83,7 @@ final class RetryPlans {
         double next = initial.toMillis();
         while (Math.round(next) < maxMs) {
             long ms = Math.round(next);
-            // Rounding to whole ms can repeat a value when the multiplier is close to 1.
-            if (waits.isEmpty() || ms > waits.getLast().toMillis()) {
-                waits.add(Duration.ofMillis(ms));
-            }
+            waits.add(Duration.ofMillis(ms));
             tooMany(waits.size(), where);
             // At least 1 ms more each step, so a multiplier just above 1 fails fast instead of looping for ever.
             next = Math.max(next * multiplier, ms + 1);

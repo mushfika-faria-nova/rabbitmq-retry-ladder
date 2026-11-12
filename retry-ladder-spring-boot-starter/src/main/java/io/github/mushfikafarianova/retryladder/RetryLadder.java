@@ -12,7 +12,6 @@ import java.util.concurrent.TimeoutException;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
 import org.springframework.amqp.core.MessageProperties;
@@ -129,9 +128,10 @@ public class RetryLadder {
     private void onError(MessageProperties arrived, Channel channel, long tag, Error error) throws IOException {
         String queue = String.valueOf(arrived.getConsumerQueue());
         meters.counter("retry.ladder.park.failed", "queue", queue, "cause", "work-error").increment();
+        String where = rules.containsKey(queue) ? "so RabbitMQ parks it in " + Topology.parkingQueue(queue)
+                : "(retry-ladder doesn't manage this queue)";
         log.error("Message " + arrived.getMessageId() + " from queue '" + queue + "': the work threw "
-                + error.getClass().getName() + "; rejecting it so RabbitMQ parks it in "
-                + Topology.parkingQueue(queue), error);
+                + error.getClass().getName() + "; rejecting it " + where, error);
         try {
             channel.basicReject(tag, false);
         } finally {
@@ -159,7 +159,8 @@ public class RetryLadder {
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             return "interrupted";
-        } catch (ExecutionException | AmqpException ex) {
+        } catch (ExecutionException | RuntimeException ex) {
+            // Anything else that goes wrong while sending: not proven stored, so the caller parks it.
             return "error";
         }
     }

@@ -56,11 +56,15 @@ Checked on every failure, in this order:
    Log a warning and rely on rule 2 only. Don't write a new start time, or the clock would restart on every retry.
 
 A missing or broken `x-retry-count` counts as 0. The time limit still applies.
+A message parked on its first failure still gets `x-first-failed-at`, so its history is complete.
 
 **A replayed message** starts again (decision 10). Only a parked message has `x-retry-exhausted-reason`,
 so a message that arrives with it was moved back from the parking queue after a fix. Before the checks above,
 the library drops its old history headers. It then gets a new start time and the full time limit.
-A message parked on its first failure still gets `x-first-failed-at`, so its history is complete.
+
+This works only for messages the library parked itself. A message RabbitMQ parked (when a copy couldn't be
+stored, after an `Error`, or at the delivery limit) has no reason header. It keeps its old history, so if it
+fails again it's parked at once.
 
 `max-attempts` defaults to 100, so normally the time limit decides. It's only there in case a header is broken.
 
@@ -122,7 +126,8 @@ with the headers updated (retry count + 1, start time on the first failure). It 
 delay queue and waits up to `confirm-timeout` for RabbitMQ to say "stored". Then it acks the original.
 When the wait is over, RabbitMQ sends the copy back to the app's queue and the app tries again.
 
-The copy is made from the message as it arrived, so changes the app's code made to it don't reach the copy.
+The copy is made from the properties and headers as they arrived, so changes the app's code made to them
+don't reach the copy. The body isn't copied first, so the app's code must not change the body's bytes.
 A persistent message stays persistent. Spring drops that setting when it receives a message, so the library
 sets it again on the copy.
 

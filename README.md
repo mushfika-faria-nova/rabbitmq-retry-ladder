@@ -36,7 +36,7 @@ The library logs this ladder at startup, so you can check your settings at a gla
 
 Every message carries its own history in headers: how many retries, when it first failed, when it last waited and for how long.
 When it stops, it is parked in `<queue>.dlq` with the reason: `window`, `attempts` or `non-retryable`.
-After a fix, move the parked messages back to the queue. Each one starts with a fresh history.
+After a fix, move the parked messages back to the queue. A message the library parked starts with a fresh history.
 
 ## Try it
 
